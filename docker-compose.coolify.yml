@@ -8,9 +8,9 @@
 #     y el contenedor no arranca si no existen esos archivos en el repo.
 #   * mysql y redis NO publican puertos al host. Upstream los ata a 127.0.0.1, pero en este
 #     server ya viven otros servicios y 3306/6379 pueden chocar. Se hablan por la red interna.
-#   * El puerto al host se declara AQUÍ (6283:1337), no en "ports_mappings" de Coolify: la API
+#   * El puerto al host se declara AQUÍ (6793:1337), no en "ports_mappings" de Coolify: la API
 #     de Coolify no acepta ese campo en el PATCH, y dejarlo en el compose lo hace reproducible.
-#     El túnel de Cloudflare enruta fleet.renopartes.com → http://localhost:6283.
+#     El túnel de Cloudflare enruta fleet.renopartes.com → http://localhost:6793.
 #   * Sin bloque S3 (Fleet lo usa para instaladores de software = feature Premium).
 #
 # El servidor de Reno no tiene puertos inbound abiertos: TODO entra por el túnel. Un dominio
@@ -100,7 +100,7 @@ services:
       FLEET_VULNERABILITIES_DATABASES_PATH: /vulndb
       FLEET_VULNERABILITIES_PERIODICITY: 1h
     ports:
-      - "6283:1337"
+      - "6793:1337"
     volumes:
       - data:/fleet
       - logs:/logs

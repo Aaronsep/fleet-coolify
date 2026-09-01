@@ -10,7 +10,7 @@ MDM autohospedado para la **flota de iPads** (kiosko del BackOffice). Es
 
 - Consola: `https://fleet.renopartes.com`
 - Coolify: proyecto *Reno Partes* / production, recurso `fleet`
-- Puerto en el host: **6283** → el túnel de Cloudflare enruta `fleet.renopartes.com → localhost:6283`
+- Puerto en el host: **6793** → el túnel de Cloudflare enruta `fleet.renopartes.com → localhost:6793`
 
 ⚠️ El servidor **no tiene puertos inbound abiertos**: todo entra por el túnel. Dar de alta el
 dominio en Coolify sin su entrada en el túnel no sirve de nada.
