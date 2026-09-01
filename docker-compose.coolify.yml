@@ -1,0 +1,112 @@
+# Fleet (fleetdm) — variante para Coolify (Reno Partes).
+#
+# Base: fleetdm/fleet → docs/solutions/docker-compose/docker-compose.yml
+#
+# Diferencias contra upstream:
+#   * TLS lo termina el túnel de Cloudflare (y/o el Traefik de Coolify), así que
+#     FLEET_SERVER_TLS=false y NO se montan ./certs/fleet.{crt,key}. Upstream los monta siempre
+#     y el contenedor no arranca si no existen esos archivos en el repo.
+#   * mysql y redis NO publican puertos al host. Upstream los ata a 127.0.0.1, pero en este
+#     server ya viven otros servicios y 3306/6379 pueden chocar. Se hablan por la red interna.
+#   * El puerto al host se declara AQUÍ (6283:1337), no en "ports_mappings" de Coolify: la API
+#     de Coolify no acepta ese campo en el PATCH, y dejarlo en el compose lo hace reproducible.
+#     El túnel de Cloudflare enruta fleet.renopartes.com → http://localhost:6283.
+#   * Sin bloque S3 (Fleet lo usa para instaladores de software = feature Premium).
+#
+# El servidor de Reno no tiene puertos inbound abiertos: TODO entra por el túnel. Un dominio
+# dado de alta en Coolify sin su entrada en el túnel no sirve de nada.
+
+volumes:
+  mysql:
+  redis:
+  data:
+  logs:
+  vulndb:
+
+services:
+  mysql:
+    image: mysql:8
+    platform: linux/x86_64
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-fleet}
+      MYSQL_USER: ${MYSQL_USER:-fleet}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD}
+    volumes:
+      - mysql:/var/lib/mysql
+    cap_add:
+      - SYS_NICE
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$$MYSQL_USER -p$$MYSQL_PASSWORD --silent || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:6
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  # Fleet corre como UID 100 pero Docker crea los volúmenes como root: sin este paso previo
+  # el server no puede escribir /logs, /data ni /vulndb. Corre una vez y termina.
+  fleet-init:
+    image: alpine:latest
+    volumes:
+      - logs:/logs
+      - data:/data
+      - vulndb:/vulndb
+    command: sh -c "chown -R 100:101 /logs /data /vulndb"
+
+  fleet:
+    image: fleetdm/fleet:v4.90.2
+    platform: linux/x86_64
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      fleet-init:
+        condition: service_completed_successfully
+    command: sh -c "/usr/bin/fleet prepare db --no-prompt && /usr/bin/fleet serve"
+    environment:
+      FLEET_MYSQL_ADDRESS: mysql:3306
+      FLEET_MYSQL_DATABASE: ${MYSQL_DATABASE:-fleet}
+      FLEET_MYSQL_USERNAME: ${MYSQL_USER:-fleet}
+      FLEET_MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD}
+      FLEET_REDIS_ADDRESS: redis:6379
+      FLEET_SERVER_ADDRESS: 0.0.0.0:1337
+      FLEET_SERVER_TLS: "false"
+      # 'openssl rand -base64 32'. Cifra los tokens de sesión y los secretos del MDM
+      # (incluido el push cert de APNs): si se pierde, hay que rehacer el MDM.
+      FLEET_SERVER_PRIVATE_KEY: ${FLEET_SERVER_PRIVATE_KEY:?set FLEET_SERVER_PRIVATE_KEY}
+      # Vacío = tier gratis. Ver README: el kiosko de los iPads cabe en el gratis.
+      FLEET_LICENSE_KEY: ${FLEET_LICENSE_KEY:-}
+      FLEET_SESSION_DURATION: ${FLEET_SESSION_DURATION:-24h}
+      FLEET_LOGGING_JSON: "true"
+      FLEET_OSQUERY_STATUS_LOG_PLUGIN: filesystem
+      FLEET_FILESYSTEM_STATUS_LOG_FILE: /logs/osqueryd.status.log
+      FLEET_FILESYSTEM_RESULT_LOG_FILE: /logs/osqueryd.results.log
+      FLEET_OSQUERY_LABEL_UPDATE_INTERVAL: 1h
+      FLEET_VULNERABILITIES_CURRENT_INSTANCE_CHECKS: "yes"
+      FLEET_VULNERABILITIES_DATABASES_PATH: /vulndb
+      FLEET_VULNERABILITIES_PERIODICITY: 1h
+    ports:
+      - "6283:1337"
+    volumes:
+      - data:/fleet
+      - logs:/logs
+      - vulndb:/vulndb
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:1337/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
