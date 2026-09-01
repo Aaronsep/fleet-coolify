@@ -66,3 +66,14 @@ migración de base no planeada.
 3. `Settings → Integrations → MDM` → **Turn on** Apple → bajar CSR → `identity.apple.com` → subir
    el `.pem`.
    ⚠️ **El push cert se renueva cada año.** Calendarizarlo: si vence, la flota entera se queda muda.
+
+## Trampas que costaron el despliegue
+
+1. **Coolify inyecta `restart: unless-stopped` a TODOS los servicios del compose.** El
+   `fleet-init` de upstream es de un solo uso (`chown` y salir) y lo esperan con
+   `depends_on: service_completed_successfully`. En Coolify ese contenedor sale con 0, Docker lo
+   revive, y la condición "completed" **nunca se estabiliza**: el deploy se cuelga esperándola y
+   la app queda en `restarting:unknown`. Aquí el init hace el `chown`, se queda vivo, y avisa que
+   terminó por **healthcheck** (`test -f /tmp/done`), con `condition: service_healthy`.
+2. **Upstream monta `./certs/fleet.{crt,key}` siempre**, incluso con `FLEET_SERVER_TLS=false`.
+   Si esos archivos no existen en el repo el contenedor no arranca. Aquí no se montan.

@@ -56,14 +56,26 @@ services:
       retries: 12
 
   # Fleet corre como UID 100 pero Docker crea los volúmenes como root: sin este paso previo
-  # el server no puede escribir /logs, /data ni /vulndb. Corre una vez y termina.
+  # el server no puede escribir /logs, /data ni /vulndb.
+  #
+  # ⚠️ Upstream lo deja como contenedor de un solo uso (chown y salir) con
+  # `depends_on: service_completed_successfully`. En Coolify eso NO funciona: Coolify inyecta
+  # `restart: unless-stopped` a TODOS los servicios del compose, así que el init sale con 0,
+  # Docker lo revive, y la condición "completed" nunca se estabiliza → el deploy se cuelga
+  # esperándolo para siempre y la app queda en `restarting`.
+  # Por eso aquí el init se queda vivo tras el chown y publica su término por healthcheck.
   fleet-init:
     image: alpine:latest
     volumes:
       - logs:/logs
       - data:/data
       - vulndb:/vulndb
-    command: sh -c "chown -R 100:101 /logs /data /vulndb"
+    command: sh -c "chown -R 100:101 /logs /data /vulndb && touch /tmp/done && sleep infinity"
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/done"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   fleet:
     image: fleetdm/fleet:v4.90.2
@@ -75,7 +87,7 @@ services:
       redis:
         condition: service_healthy
       fleet-init:
-        condition: service_completed_successfully
+        condition: service_healthy
     command: sh -c "/usr/bin/fleet prepare db --no-prompt && /usr/bin/fleet serve"
     environment:
       FLEET_MYSQL_ADDRESS: mysql:3306
