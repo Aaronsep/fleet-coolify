@@ -1,0 +1,113 @@
+name: build-fleet-reno
+
+# Compila el binario de Fleet con el parche de kiosko Android (patches/) y lo publica
+# como asset de un Release de ESTE repo. El Dockerfile de image/ lo baja y lo mete
+# encima de la imagen oficial fleetdm/fleet.
+#
+# Se compila aquí y no en el server de Reno a propósito: ese server corre producción
+# (front, api, mdmesh...) y un build de Fleet (yarn + webpack + go) le comería CPU,
+# RAM y disco. Aquí sale gratis y el server sólo baja ~100 MB.
+
+on:
+  workflow_dispatch:
+    inputs:
+      fleet_tag:
+        description: "Tag de fleetdm/fleet a compilar"
+        default: "fleet-v4.90.2"
+      release_tag:
+        description: "Tag del release de este repo donde se sube el binario"
+        default: "fleet-reno-v4.90.2-kiosk1"
+  push:
+    branches: [main]
+    paths:
+      - "patches/**"
+      - ".github/workflows/build-fleet-reno.yml"
+
+permissions:
+  contents: write
+
+env:
+  FLEET_TAG: ${{ github.event.inputs.fleet_tag || 'fleet-v4.90.2' }}
+  RELEASE_TAG: ${{ github.event.inputs.release_tag || 'fleet-reno-v4.90.2-kiosk1' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout de este repo (los parches)
+        uses: actions/checkout@v4
+        with:
+          path: reno
+
+      - name: Checkout de fleetdm/fleet
+        uses: actions/checkout@v4
+        with:
+          repository: fleetdm/fleet
+          ref: ${{ env.FLEET_TAG }}
+          path: fleet
+
+      - name: Aplicar parche de kiosko Android
+        run: python3 reno/patches/allow_android_kiosk_keys.py fleet/server/fleet/android.go
+
+      - name: Go (versión de go.mod)
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: fleet/go.mod
+          cache: false
+
+      - name: Node (versión de package.json)
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: fleet/package.json
+
+      - name: Yarn 1.22.x (el que pide packageManager)
+        run: corepack enable
+
+      - name: Dependencias JS
+        working-directory: fleet
+        run: make deps-js
+
+      - name: Bundle del front + bindata
+        working-directory: fleet
+        env:
+          NODE_OPTIONS: "--max-old-space-size=6144"
+        run: make generate
+
+      # Mismas banderas que .goreleaser.yml de upstream: estático (la imagen oficial es
+      # alpine/musl, un binario ligado a glibc NO corre ahí) y netgo para el resolver.
+      - name: Compilar fleet (linux/amd64, estático)
+        working-directory: fleet
+        env:
+          CGO_ENABLED: "1"
+        run: |
+          set -eux
+          VERSION="${FLEET_TAG#fleet-v}-reno-kiosk"
+          REVISION=$(git rev-parse HEAD)
+          go build -tags full,fts5,netgo -trimpath -o build/fleet \
+            -ldflags "-s -w -extldflags \"-static\" \
+              -X github.com/fleetdm/fleet/v4/server/version.appName=fleet \
+              -X github.com/fleetdm/fleet/v4/server/version.version=${VERSION} \
+              -X github.com/fleetdm/fleet/v4/server/version.branch=reno-kiosk \
+              -X github.com/fleetdm/fleet/v4/server/version.revision=${REVISION} \
+              -X github.com/fleetdm/fleet/v4/server/version.buildDate=$(date +%F) \
+              -X github.com/fleetdm/fleet/v4/server/version.buildUser=github-actions" \
+            ./cmd/fleet
+          file build/fleet
+          ./build/fleet version
+          sha256sum build/fleet | tee build/fleet.sha256
+
+      - name: Publicar el binario en un Release
+        working-directory: fleet
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -eux
+          gh release view "$RELEASE_TAG" >/dev/null 2>&1 \
+            || gh release create "$RELEASE_TAG" \
+                 --title "$RELEASE_TAG" \
+                 --notes "Binario de Fleet ${FLEET_TAG} con el parche de kiosko Android (patches/allow_android_kiosk_keys.py)."
+          gh release upload "$RELEASE_TAG" build/fleet build/fleet.sha256 --clobber
+          echo "### SHA256" >> $GITHUB_STEP_SUMMARY
+          cat build/fleet.sha256 >> $GITHUB_STEP_SUMMARY
