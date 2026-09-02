@@ -16,7 +16,7 @@ on:
         default: "fleet-v4.90.2"
       release_tag:
         description: "Tag del release de este repo donde se sube el binario"
-        default: "fleet-reno-v4.90.2-kiosk2"
+        default: "fleet-reno-v4.90.2-kiosk3"
   push:
     branches: [main]
     paths:
@@ -28,7 +28,7 @@ permissions:
 
 env:
   FLEET_TAG: ${{ github.event.inputs.fleet_tag || 'fleet-v4.90.2' }}
-  RELEASE_TAG: ${{ github.event.inputs.release_tag || 'fleet-reno-v4.90.2-kiosk2' }}
+  RELEASE_TAG: ${{ github.event.inputs.release_tag || 'fleet-reno-v4.90.2-kiosk3' }}
 
 jobs:
   build:
@@ -48,7 +48,7 @@ jobs:
           path: fleet
 
       - name: Aplicar parche de kiosko Android
-        run: python3 reno/patches/allow_android_kiosk_keys.py fleet/server/fleet/android.go
+        run: python3 reno/patches/allow_android_kiosk_keys.py fleet/server/fleet/android.go fleet/server/mdm/android/service/profiles.go
 
       - name: Go (versión de go.mod)
         uses: actions/setup-go@v5

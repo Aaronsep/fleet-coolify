@@ -19,7 +19,7 @@ un perfil no llegaría a Google y encima pelearía con la app-agente de Fleet.
 El APK del BackOffice se mete por `adb install` y se vuelve HOME con
 persistentPreferredActivities.
 
-Uso: allow_android_kiosk_keys.py <ruta a server/fleet/android.go>
+Uso: allow_android_kiosk_keys.py <server/fleet/android.go> <server/mdm/android/service/profiles.go>
 Falla con código 1 si no encuentra qué quitar (para que el build truene, no para que
 pase de largo con un binario sin parchar).
 """
@@ -37,9 +37,49 @@ KEYS = [
     "playStoreMode",
     # Un kiosko donde el operador puede desinstalar la app del kiosko no es un kiosko.
     "uninstallAppsDisabled",
+    # Sin "applications" no hay lockTaskAllowed y sin lockTaskAllowed no hay kiosko de
+    # verdad: sólo se puede dejar la app como HOME, y atrás/recientes siguen escapando.
+    # Ver patch_profiles_applications() para cómo se mandan sin pisar la app-agente de Fleet.
+    "applications",
 ]
 
+PROFILES_ANCHOR = """	policyReq, skip, err := r.patchPolicy(ctx, hostUUID, policyName, &policy, settingFromProfile)
+	if err != nil {
+		return nil, ctxerr.Wrapf(ctx, err, "patch policy for host %s", hostUUID)
+	}
+"""
+
+PROFILES_INSERT = """
+	// [Reno] Las apps NO viajan en el patch normal: patchPolicy manda
+	// PoliciesPatchOpts{ExcludeApps: true}, o sea un field mask sin "applications", así que un
+	// perfil que traiga esa llave se perdería en silencio. Se mandan aparte con
+	// ModifyPolicyApplications, que FUSIONA entrada por entrada (no reemplaza el arreglo) y por
+	// eso NO pisa la app-agente que Fleet administra por su cuenta.
+	// Esto es lo que habilita lockTaskAllowed sobre un APK metido por sideload, o sea el kiosko
+	// de verdad (atrás y recientes bloqueados) y no nada más "la app es el HOME".
+	if len(policy.Applications) > 0 {
+		if _, appErr := r.Client.EnterprisesPoliciesModifyPolicyApplications(ctx, policyName,
+			policy.Applications); appErr != nil && !androidmgmt.IsNotModifiedError(appErr) {
+			r.Logger.ErrorContext(ctx, "reno: modifying policy applications",
+				"policy_name", policyName, "err", appErr)
+		}
+	}
+"""
+
+
+def patch_profiles_applications(path):
+    """Manda al aparato las apps que traiga un perfil (Fleet las excluye de su patch)."""
+    src = open(path, encoding="utf-8").read()
+    if src.count(PROFILES_ANCHOR) != 1:
+        sys.exit("ERROR: esperaba 1 ancla de patchPolicy en %s, encontré %d"
+                 % (path, src.count(PROFILES_ANCHOR)))
+    src = src.replace(PROFILES_ANCHOR, PROFILES_ANCHOR + PROFILES_INSERT)
+    open(path, "w", encoding="utf-8").write(src)
+    print("Parche aplicado: applications -> ModifyPolicyApplications en %s" % path)
+
+
 path = sys.argv[1]
+profiles_path = sys.argv[2]
 src = open(path, encoding="utf-8").read()
 
 start = src.find("var AndroidForbiddenJSONKeys = map[string]string{")
@@ -69,3 +109,5 @@ for key in KEYS:
         sys.exit('ERROR: "%s" sigue en el mapa después del parche' % key)
 
 print("Parche aplicado: %s liberadas en %s" % (", ".join(KEYS), path))
+
+patch_profiles_applications(profiles_path)
