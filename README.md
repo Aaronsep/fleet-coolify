@@ -1,10 +1,13 @@
 # Fleet en Coolify (Reno Partes)
 
-MDM autohospedado para la **flota de iPads** (kiosko del BackOffice). Es
-[Fleet](https://github.com/fleetdm/fleet), MIT en el core.
+MDM autohospedado para la **flota de iPads** y, desde el 2026-09-02, también para los
+**Android en kiosko**. Es [Fleet](https://github.com/fleetdm/fleet), MIT en el core, con **el
+binario parchado** (ver *Fork: las llaves de kiosko Android* más abajo).
 
-> Las tablets **Android siguen en MDMesh**. En Fleet, el modo *fully-managed / device owner* de
-> Android es Premium ($7 por aparato al mes), así que no tiene caso mover lo que ya funciona.
+> Corrección a lo que decía antes este README: enrolar Android *company-owned / fully managed*
+> (device owner) **NO es Premium** — la liga de enrolamiento lleva `?fully_managed=true` y ya.
+> Lo que sí es Premium es **desplegar apps** (`/software/app_store_apps` responde 402), por eso
+> el APK del BackOffice se mete por `adb install`.
 
 ## Dónde vive
 
@@ -42,6 +45,43 @@ El kiosko de los iPads cabe completo en el gratis: se supervisa cada iPad con **
 ⚠️ `com.apple.app.lock` apunta a un **bundle ID** y un Web Clip **no tiene**: el blanco será Safari
 con filtro de contenido a `renopartes.com`, o un envoltorio WKWebView.
 
+## Fork: las llaves de kiosko Android
+
+Fleet **rechaza al subir** un perfil Android que traiga `kioskCustomLauncherEnabled`,
+`kioskCustomization` o `persistentPreferredActivities`: están en `AndroidForbiddenJSONKeys`
+(`server/fleet/android.go`) con el mensaje *"Currently, only personal hosts are supported."*
+
+🔑 **No es muro de pago ni límite de Google, y no depende de la versión** (la lista es igual en
+`main`): el *field mask* con el que Fleet le parcha la política a Google
+(`server/mdm/android/service/androidmgmt/google_client.go`) **ya incluye esas tres llaves**, y el
+reconciliador manda el JSON crudo del perfil sin volver a validarlo
+(`server/mdm/android/service/profiles.go`). El freno está **sólo en el validador de subida**.
+
+Por eso aquí el binario va parchado:
+
+- `patches/allow_android_kiosk_keys.py` quita esas tres entradas del mapa. **Truena si no las
+  encuentra** — así un cambio de upstream rompe el build en vez de publicar un binario sin parchar.
+- `.github/workflows/build-fleet-reno.yml` compila en **GitHub Actions** (no en el server de Reno:
+  ese server corre producción y un build de Fleet = yarn + webpack + go) con las mismas banderas
+  del `.goreleaser.yml` de upstream — **estático**, porque la imagen oficial es alpine/musl y un
+  binario ligado a glibc no corre ahí — y sube el binario como asset de un Release de este repo.
+- `image/Dockerfile` lo pone encima de la imagen oficial, verificando **SHA256**.
+
+**No se libera `applications`** a propósito: Fleet parcha las apps por separado
+(`EnterprisesPoliciesModifyPolicyApplications`) y su patch normal las excluye
+(`PoliciesPatchOpts{ExcludeApps: true}`), así que una lista de apps en un perfil **no llegaría a
+Google** y encima pelearía con la app-agente de Fleet.
+
+### Subir de versión
+
+1. Editar `FLEET_TAG` / `RELEASE_TAG` al correr el workflow (`workflow_dispatch`).
+2. Copiar el SHA256 que imprime el resumen del run.
+3. Actualizar `FLEET_BINARY_URL`, `FLEET_BINARY_SHA256` y `FLEET_UPSTREAM_IMAGE` en el compose.
+4. `git push` y **Redeploy** en Coolify.
+
+⚠️ El parche hay que rehacerlo (o revalidarlo) en **cada** actualización de Fleet. Si upstream
+libera esas llaves por su cuenta, el script truena y ahí se quita el parche.
+
 ## Variables de entorno (se ponen en Coolify, nunca aquí)
 
 | Variable | Nota |
@@ -54,9 +94,8 @@ con filtro de contenido a `renopartes.com`, o un envoltorio WKWebView.
 
 ## Actualizar
 
-Cambiar el tag de `fleetdm/fleet` en el compose, `git push`, y **Redeploy** en Coolify.
-La imagen va **pinneada** a propósito: con `:latest` un redeploy cualquiera podría meter una
-migración de base no planeada.
+Ver *Fork: las llaves de kiosko Android → Subir de versión*. La imagen base va **pinneada** a
+propósito: con `:latest` un redeploy cualquiera podría meter una migración de base no planeada.
 
 ## Después del primer arranque
 

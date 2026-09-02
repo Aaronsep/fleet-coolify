@@ -12,6 +12,8 @@
 #     de Coolify no acepta ese campo en el PATCH, y dejarlo en el compose lo hace reproducible.
 #     El túnel de Cloudflare enruta fleet.renopartes.com → http://localhost:6793.
 #   * Sin bloque S3 (Fleet lo usa para instaladores de software = feature Premium).
+#   * El servicio `fleet` NO usa la imagen oficial tal cual: se construye desde ./image, que le
+#     cambia el binario por el parchado (kiosko Android). Ver README.
 #
 # El servidor de Reno no tiene puertos inbound abiertos: TODO entra por el túnel. Un dominio
 # dado de alta en Coolify sin su entrada en el túnel no sirve de nada.
@@ -78,7 +80,15 @@ services:
       retries: 20
 
   fleet:
-    image: fleetdm/fleet:v4.90.2
+    # Imagen propia: la oficial + el binario parchado (llaves de kiosko Android liberadas).
+    # El binario lo compila GitHub Actions y vive como asset de un Release de este repo;
+    # aquí sólo se baja y se verifica el SHA256. Ver README → "Fork: las llaves de kiosko Android".
+    build:
+      context: ./image
+      args:
+        FLEET_UPSTREAM_IMAGE: fleetdm/fleet:v4.90.2
+        FLEET_BINARY_URL: https://github.com/Aaronsep/fleet-coolify/releases/download/fleet-reno-v4.90.2-kiosk1/fleet
+        FLEET_BINARY_SHA256: 6ebde61b91181fd8b2384ace38589b427e56462297d154caf05f76a69db9f2c0
     platform: linux/x86_64
     restart: unless-stopped
     depends_on:
