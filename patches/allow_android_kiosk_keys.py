@@ -4,7 +4,8 @@
 Fleet rechaza al SUBIR un perfil Android que traiga kioskCustomLauncherEnabled,
 kioskCustomization o persistentPreferredActivities
 (server/fleet/android.go -> AndroidForbiddenJSONKeys), con el mensaje
-"Currently, only personal hosts are supported."
+"Currently, only personal hosts are supported.", y tampoco deja playStoreMode ni
+uninstallAppsDisabled ("Software management is coming soon.").
 
 No es un muro de pago ni un límite de Google: el field mask con el que Fleet le parcha
 la política a Google (server/mdm/android/service/androidmgmt/google_client.go) YA incluye
@@ -29,6 +30,13 @@ KEYS = [
     "kioskCustomLauncherEnabled",
     "kioskCustomization",
     "persistentPreferredActivities",
+    # Sin esto el Play Store del aparato queda en modo WHITELIST (el default de Google) y
+    # SÓLO deja instalar las apps de la política -> no se puede ni bajar Chrome, que es el
+    # motor del TWA. Con playStoreMode se abre la tienda, se instala, y se vuelve a cerrar
+    # quitando la llave.
+    "playStoreMode",
+    # Un kiosko donde el operador puede desinstalar la app del kiosko no es un kiosko.
+    "uninstallAppsDisabled",
 ]
 
 path = sys.argv[1]
