@@ -60,8 +60,12 @@ PROFILES_INSERT = """
 	if len(policy.Applications) > 0 {
 		if _, appErr := r.Client.EnterprisesPoliciesModifyPolicyApplications(ctx, policyName,
 			policy.Applications); appErr != nil && !androidmgmt.IsNotModifiedError(appErr) {
+			// NO tragarse este error: si las apps no llegaron a Google el perfil NO cumplio.
+			// Devolviendo error los perfiles se quedan en pending y el cron reintenta cada 30s,
+			// en vez de marcarlos verified con la politica a medias (que fue lo que nos engano).
 			r.Logger.ErrorContext(ctx, "reno: modifying policy applications",
 				"policy_name", policyName, "err", appErr)
+			return nil, ctxerr.Wrapf(ctx, appErr, "modify policy applications for host %s", hostUUID)
 		}
 	}
 """
