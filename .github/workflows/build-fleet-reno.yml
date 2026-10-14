@@ -16,7 +16,7 @@ on:
         default: "fleet-v4.90.2"
       release_tag:
         description: "Tag del release de este repo donde se sube el binario"
-        default: "fleet-reno-v4.90.2-kiosk5"
+        default: "fleet-reno-v4.90.2-kiosk6"
   push:
     branches: [main]
     paths:
@@ -28,7 +28,7 @@ permissions:
 
 env:
   FLEET_TAG: ${{ github.event.inputs.fleet_tag || 'fleet-v4.90.2' }}
-  RELEASE_TAG: ${{ github.event.inputs.release_tag || 'fleet-reno-v4.90.2-kiosk5' }}
+  RELEASE_TAG: ${{ github.event.inputs.release_tag || 'fleet-reno-v4.90.2-kiosk6' }}
 
 jobs:
   build:
@@ -52,6 +52,9 @@ jobs:
 
       - name: Aplicar parche de etiquetas en perfiles Android
         run: python3 reno/patches/allow_android_label_scoping.py fleet/server/service/mdm.go
+
+      - name: Aplicar parche del agente Android sin COMPANION_APP
+        run: python3 reno/patches/android_agent_sin_companion.py fleet/server/mdm/android/service/service.go
 
       - name: Go (versión de go.mod)
         uses: actions/setup-go@v5
