@@ -99,6 +99,22 @@ Cómo se usa: una **etiqueta manual global** (las Android no corren osquery; se 
 (`ModifyPolicyApplications` sólo fusiona): el perfil propio tiene que **pisar** la entrada
 `com.renopartes.kiosk` (`installType: AVAILABLE`, sin `lockTaskAllowed`) o el aparato sigue en kiosko.
 
+## Premium de desarrollo (`--dev_license`) — sólo desarrollo y pruebas
+
+🔴 **Antes de usar este Fleet en producción hace falta Fleet Premium o quitar `--dev_license` del
+compose.**
+
+El compose arranca `fleet serve --dev_license`. No es un parche ni una llave nuestra: es la licencia
+de desarrollo que trae el binario oficial (`cmd/fleet/serve.go` → `initLicense`), firmada por Fleet
+con la nota *"for development only"*, tier `premium`, 1000 aparatos. El `ee/LICENSE` lo permite
+sólo así: *"you may copy and modify the Software for development and testing purposes, without
+requiring a subscription"*; en producción exige suscripción.
+
+- Enciende **todo** Premium, no sólo *teams*: el servicio de `ee/` completo
+  (`eeservice.NewService`), SCIM, proxy SCEP, firmas HTTP, software, actualizaciones de SO, etc.
+- **Vence el 2026-12-30.** Después Fleet la trata como Premium vencida y entra en modo restringido.
+- Se enciende 2026-10-14 por orden del Usuario: este Fleet es de pruebas (los teléfonos los tiene él).
+
 ### Subir de versión
 
 1. Editar `FLEET_TAG` / `RELEASE_TAG` al correr el workflow (`workflow_dispatch`).
@@ -117,7 +133,7 @@ libera esas llaves por su cuenta, el script truena y ahí se quita el parche.
 | `MYSQL_PASSWORD` | obligatoria |
 | `MYSQL_DATABASE` / `MYSQL_USER` | por omisión `fleet` |
 | `FLEET_SERVER_PRIVATE_KEY` | `openssl rand -base64 32`. **Si se pierde, hay que rehacer el MDM**: cifra los secretos, incluido el push cert de APNs |
-| `FLEET_LICENSE_KEY` | vacío = gratis |
+| `FLEET_LICENSE_KEY` | vacío = gratis. ⚠️ Con `--dev_license` en el compose se ignora (ver *Premium de desarrollo*) |
 
 ## Actualizar
 
