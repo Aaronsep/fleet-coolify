@@ -16,7 +16,7 @@ on:
         default: "fleet-v4.90.2"
       release_tag:
         description: "Tag del release de este repo donde se sube el binario"
-        default: "fleet-reno-v4.90.2-kiosk4"
+        default: "fleet-reno-v4.90.2-kiosk5"
   push:
     branches: [main]
     paths:
@@ -28,7 +28,7 @@ permissions:
 
 env:
   FLEET_TAG: ${{ github.event.inputs.fleet_tag || 'fleet-v4.90.2' }}
-  RELEASE_TAG: ${{ github.event.inputs.release_tag || 'fleet-reno-v4.90.2-kiosk4' }}
+  RELEASE_TAG: ${{ github.event.inputs.release_tag || 'fleet-reno-v4.90.2-kiosk5' }}
 
 jobs:
   build:
@@ -49,6 +49,9 @@ jobs:
 
       - name: Aplicar parche de kiosko Android
         run: python3 reno/patches/allow_android_kiosk_keys.py fleet/server/fleet/android.go fleet/server/mdm/android/service/profiles.go
+
+      - name: Aplicar parche de etiquetas en perfiles Android
+        run: python3 reno/patches/allow_android_label_scoping.py fleet/server/service/mdm.go
 
       - name: Go (versión de go.mod)
         uses: actions/setup-go@v5
@@ -82,7 +85,7 @@ jobs:
           CGO_ENABLED: "1"
         run: |
           set -eux
-          VERSION="${FLEET_TAG#fleet-v}-reno-kiosk"
+          VERSION="${FLEET_TAG#fleet-v}-reno-${RELEASE_TAG##*-}"
           REVISION=$(git rev-parse HEAD)
           go build -tags full,fts5,netgo -trimpath -o build/fleet \
             -ldflags "-s -w -extldflags \"-static\" \

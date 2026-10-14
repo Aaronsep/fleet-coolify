@@ -72,6 +72,33 @@ Por eso aquí el binario va parchado:
 (`PoliciesPatchOpts{ExcludeApps: true}`), así que una lista de apps en un perfil **no llegaría a
 Google** y encima pelearía con la app-agente de Fleet.
 
+## Fork: perfiles Android acotados por etiqueta
+
+En Fleet gratis no hay *teams*, así que **todo perfil Android cae en todos los Android**, y subir uno
+con `labels_include_any` / `labels_exclude_any` responde *"Scoping configuration profiles with labels
+requires Fleet Premium license"*.
+
+El candado y el motor están **fuera de `ee/`**, o sea bajo la licencia MIT del `LICENSE` de la raíz
+(*"Content outside of the above mentioned directories … is available under the "MIT Expat"
+license"*):
+
+- el candado: `server/service/mdm.go` → `parseAndValidateAndroidConfigProfile` (al subir) y la rama
+  «sólo etiquetas» de `updateMDMAndroidConfigProfile` (el `PATCH`);
+- el motor: `server/datastore/mysql/android.go` → `androidApplicableProfilesQuery` ya resuelve
+  include-all / include-any / exclude-any, y el reconciliador no mira la licencia.
+
+`patches/allow_android_label_scoping.py` quita sólo esos dos candados de Android (truena si no los
+encuentra). Siguen pidiendo Premium: `BatchSetMDMProfiles` (gitops / `fleetctl apply`), las rutas de
+Apple y Windows, y los *teams* (que son `ee/`).
+
+Cómo se usa: una **etiqueta manual global** (las Android no corren osquery; se crea con
+`POST /api/v1/fleet/labels {"name": …, "host_ids": […]}`), el perfil de todos con
+`labels_exclude_any=<etiqueta>` y el perfil propio con `labels_include_any=<etiqueta>`, por la API
+(la consola gratis no enseña el selector de etiquetas).
+⚠️ `applications` **no se borra** de la política de Google al dejar de aplicar un perfil
+(`ModifyPolicyApplications` sólo fusiona): el perfil propio tiene que **pisar** la entrada
+`com.renopartes.kiosk` (`installType: AVAILABLE`, sin `lockTaskAllowed`) o el aparato sigue en kiosko.
+
 ### Subir de versión
 
 1. Editar `FLEET_TAG` / `RELEASE_TAG` al correr el workflow (`workflow_dispatch`).
@@ -79,7 +106,7 @@ Google** y encima pelearía con la app-agente de Fleet.
 3. Actualizar `FLEET_BINARY_URL`, `FLEET_BINARY_SHA256` y `FLEET_UPSTREAM_IMAGE` en el compose.
 4. `git push` y **Redeploy** en Coolify.
 
-⚠️ El parche hay que rehacerlo (o revalidarlo) en **cada** actualización de Fleet. Si upstream
+⚠️ Los parches hay que rehacerlos (o revalidarlos) en **cada** actualización de Fleet. Si upstream
 libera esas llaves por su cuenta, el script truena y ahí se quita el parche.
 
 ## Variables de entorno (se ponen en Coolify, nunca aquí)
