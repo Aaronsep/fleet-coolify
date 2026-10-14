@@ -87,8 +87,8 @@ services:
       context: ./image
       args:
         FLEET_UPSTREAM_IMAGE: fleetdm/fleet:v4.90.2
-        FLEET_BINARY_URL: https://github.com/Aaronsep/fleet-coolify/releases/download/fleet-reno-v4.90.2-kiosk5/fleet
-        FLEET_BINARY_SHA256: b4d388f09bfa3036e6cd299e3c2dc7224ebc247b4640f44fb6f81774c27cd340
+        FLEET_BINARY_URL: https://github.com/Aaronsep/fleet-coolify/releases/download/fleet-reno-v4.90.2-kiosk6/fleet
+        FLEET_BINARY_SHA256: d23eb83edd96098b557d4664d9bdb0c4b067ea197cc5f566423b5be6f42dc833
     platform: linux/x86_64
     restart: unless-stopped
     depends_on:
