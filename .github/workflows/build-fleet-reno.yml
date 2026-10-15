@@ -16,7 +16,7 @@ on:
         default: "fleet-v4.90.2"
       release_tag:
         description: "Tag del release de este repo donde se sube el binario"
-        default: "fleet-reno-v4.90.2-kiosk6"
+        default: "fleet-reno-v4.90.2-kiosk7"
   push:
     branches: [main]
     paths:
@@ -28,7 +28,7 @@ permissions:
 
 env:
   FLEET_TAG: ${{ github.event.inputs.fleet_tag || 'fleet-v4.90.2' }}
-  RELEASE_TAG: ${{ github.event.inputs.release_tag || 'fleet-reno-v4.90.2-kiosk6' }}
+  RELEASE_TAG: ${{ github.event.inputs.release_tag || 'fleet-reno-v4.90.2-kiosk7' }}
 
 jobs:
   build:
@@ -55,6 +55,9 @@ jobs:
 
       - name: Aplicar parche del agente Android sin COMPANION_APP
         run: python3 reno/patches/android_agent_sin_companion.py fleet/server/mdm/android/service/service.go
+
+      - name: Aplicar parche de Premium sin vencimiento (sin --dev_license)
+        run: python3 reno/patches/premium_sin_vencimiento.py fleet/cmd/fleet/serve.go
 
       - name: Go (versión de go.mod)
         uses: actions/setup-go@v5
@@ -113,7 +116,7 @@ jobs:
           gh release view "$RELEASE_TAG" >/dev/null 2>&1 \
             || gh release create "$RELEASE_TAG" \
                  --title "$RELEASE_TAG" \
-                 --notes "Binario de Fleet ${FLEET_TAG} con el parche de kiosko Android (patches/allow_android_kiosk_keys.py)."
+                 --notes "Binario de Fleet ${FLEET_TAG} con los parches de patches/ (kiosko Android, etiquetas, agente sin COMPANION_APP, Premium sin vencimiento)."
           gh release upload "$RELEASE_TAG" build/fleet build/fleet.sha256 --clobber
           echo "### SHA256" >> $GITHUB_STEP_SUMMARY
           cat build/fleet.sha256 >> $GITHUB_STEP_SUMMARY
