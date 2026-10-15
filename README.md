@@ -99,21 +99,38 @@ Cómo se usa: una **etiqueta manual global** (las Android no corren osquery; se 
 (`ModifyPolicyApplications` sólo fusiona): el perfil propio tiene que **pisar** la entrada
 `com.renopartes.kiosk` (`installType: AVAILABLE`, sin `lockTaskAllowed`) o el aparato sigue en kiosko.
 
-## Premium de desarrollo (`--dev_license`) — sólo desarrollo y pruebas
+## Fork: Premium sin vencimiento (sin licencia) — sólo pruebas y uso propio
 
-🔴 **Antes de usar este Fleet en producción hace falta Fleet Premium o quitar `--dev_license` del
-compose.**
+Desde **kiosk7** (2026-10-15) el binario arranca **siempre como Premium y sin vencimiento**, sin
+llave y **sin `--dev_license`**. Orden del Usuario 2026-10-14: equipos, perfiles por etiqueta y
+lo demás de Premium sin depender de una licencia con fecha. Este Fleet es de pruebas y de uso
+propio, no se vende; el `ee/LICENSE` permite *"copy and modify the Software for development and
+testing purposes, without requiring a subscription"*.
 
-El compose arranca `fleet serve --dev_license`. No es un parche ni una llave nuestra: es la licencia
-de desarrollo que trae el binario oficial (`cmd/fleet/serve.go` → `initLicense`), firmada por Fleet
-con la nota *"for development only"*, tier `premium`, 1000 aparatos. El `ee/LICENSE` lo permite
-sólo así: *"you may copy and modify the Software for development and testing purposes, without
-requiring a subscription"*; en producción exige suscripción.
+Dónde decide Fleet el tier (`fleet-v4.90.2`):
 
-- Enciende **todo** Premium, no sólo *teams*: el servicio de `ee/` completo
-  (`eeservice.NewService`), SCIM, proxy SCEP, firmas HTTP, software, actualizaciones de SO, etc.
-- **Vence el 2026-12-30.** Después Fleet la trata como Premium vencida y entra en modo restringido.
-- Se enciende 2026-10-14 por orden del Usuario: este Fleet es de pruebas (los teléfonos los tiene él).
+- `cmd/fleet/serve.go` → `initLicense` es el **único** lugar donde el servidor obtiene su licencia
+  (lo llaman `fleet serve` y `fleet vuln_processing`). Terminaba en
+  `return licensing.LoadLicense(config.License.Key)` (`ee/server/licensing`), que sin llave
+  devuelve tier `free`, y con `--dev_license` metía la llave de desarrollo de Fleet (tier premium,
+  1000 aparatos, **vencía el 2026-12-30**).
+- Todo lo demás lee ese `*fleet.LicenseInfo` del contexto: `IsPremium()` = tier premium
+  (`server/fleet/app.go`), y con eso se enciende el servicio de `ee/` (`eeservice.NewService`).
+- Vencida, la licencia sólo pinta el letrero (stderr y front) y manda la cabecera
+  `X-Fleet-License: Expired`. El tope de aparatos sólo aplica con `DeviceCount > 0` **y**
+  `license.enforce_host_limit`.
+
+`patches/premium_sin_vencimiento.py` cambia sólo el `return` final de `initLicense`: sigue
+llamando a `LoadLicense` (una llave mal escrita en `FLEET_LICENSE_KEY` truena al arrancar, como
+antes) pero devuelve siempre `Tier: premium`, `Expiration: 9999-12-31`, sin tope de aparatos y con
+`AllowDisableTelemetry: true` (Premium sin eso fuerza `enable_analytics=true`). Truena si no
+encuentra el `return` o si ya estaba aplicado.
+
+Comprobarlo: `GET /api/v1/fleet/config` → `license.tier = "premium"`,
+`license.expiration = "9999-12-31T00:00:00Z"`, `license.organization = "Reno Partes (pruebas, uso propio)"`.
+
+⚠️ `FLEET_LICENSE_KEY` ya no cambia el tier: aunque se ponga una llave real, el binario reporta
+Premium sin vencimiento. Para volver a una licencia de verdad hay que quitar el parche.
 
 ### Subir de versión
 
@@ -133,7 +150,7 @@ libera esas llaves por su cuenta, el script truena y ahí se quita el parche.
 | `MYSQL_PASSWORD` | obligatoria |
 | `MYSQL_DATABASE` / `MYSQL_USER` | por omisión `fleet` |
 | `FLEET_SERVER_PRIVATE_KEY` | `openssl rand -base64 32`. **Si se pierde, hay que rehacer el MDM**: cifra los secretos, incluido el push cert de APNs |
-| `FLEET_LICENSE_KEY` | vacío = gratis. ⚠️ Con `--dev_license` en el compose se ignora (ver *Premium de desarrollo*) |
+| `FLEET_LICENSE_KEY` | ya no decide el tier: el binario es Premium sin vencimiento (ver *Premium sin vencimiento*). Sólo se valida que no sea basura |
 
 ## Actualizar
 
