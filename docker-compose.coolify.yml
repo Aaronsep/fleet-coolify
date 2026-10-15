@@ -114,6 +114,9 @@ services:
       FLEET_SERVER_PRIVATE_KEY: ${FLEET_SERVER_PRIVATE_KEY:?set FLEET_SERVER_PRIVATE_KEY}
       # Ya no decide el tier (el binario es Premium sin vencimiento); sólo se valida si se pone.
       FLEET_LICENSE_KEY: ${FLEET_LICENSE_KEY:-}
+      # MDM de Windows: cert y llave WSTEP (contenido PEM, no rutas). Vacío = Windows MDM no se puede encender.
+      FLEET_MDM_WINDOWS_WSTEP_IDENTITY_CERT_BYTES: ${FLEET_MDM_WINDOWS_WSTEP_IDENTITY_CERT_BYTES:-}
+      FLEET_MDM_WINDOWS_WSTEP_IDENTITY_KEY_BYTES: ${FLEET_MDM_WINDOWS_WSTEP_IDENTITY_KEY_BYTES:-}
       FLEET_SESSION_DURATION: ${FLEET_SESSION_DURATION:-24h}
       FLEET_LOGGING_JSON: "true"
       FLEET_OSQUERY_STATUS_LOG_PLUGIN: filesystem
