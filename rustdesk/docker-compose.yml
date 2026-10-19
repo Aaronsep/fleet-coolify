@@ -72,3 +72,37 @@ services:
       rustdesk-init:
         condition: service_healthy
     restart: unless-stopped
+
+  # DDNS: cada 5 min compara la IP pública de la oficina con el registro A de rustdesk.renopartes.com y, si cambió,
+  # actualiza SOLO ese registro (por su id). Token de Cloudflare «rustdesk-ddns»: solo DNS Write en renopartes.com
+  # (copia en el Llavero de la Mac: «ARES Cloudflare rustdesk-ddns»). Sin token no hace nada.
+  ddns:
+    image: curlimages/curl:8.23.0
+    environment:
+      CF_DDNS_TOKEN: ${CF_DDNS_TOKEN:-}
+      CF_ZONE_ID: ${CF_ZONE_ID:-e872f21fc32d7e2403565b40ad44fc08}
+      CF_RECORD_ID: ${CF_RECORD_ID:-6ed26180c59b9b6ee0cb3463760a4319}
+      CF_RECORD_NAME: ${CF_RECORD_NAME:-rustdesk.renopartes.com}
+    command:
+      - sh
+      - -c
+      - |
+        [ -n "$$CF_DDNS_TOKEN" ] || { echo "ddns: sin CF_DDNS_TOKEN, no hago nada"; exec sleep infinity; }
+        U="https://api.cloudflare.com/client/v4/zones/$$CF_ZONE_ID/dns_records/$$CF_RECORD_ID"
+        while true; do
+          ip=$$(curl -fsS -m 10 https://api.ipify.org || curl -fsS -m 10 https://ipv4.icanhazip.com)
+          ip=$$(echo "$$ip" | tr -d ' \r\n')
+          if echo "$$ip" | grep -Eq '^([0-9]{1,3}\.){3}[0-9]{1,3}$$'; then
+            r=$$(curl -fsS -m 15 -H "Authorization: Bearer $$CF_DDNS_TOKEN" "$$U")
+            dns=$$(echo "$$r" | sed -n 's/.*"content":"\([0-9.]*\)".*/\1/p')
+            nom=$$(echo "$$r" | sed -n 's/.*"name":"\([^"]*\)".*/\1/p')
+            if [ "$$nom" != "$$CF_RECORD_NAME" ]; then echo "ddns: el registro $$CF_RECORD_ID no es $$CF_RECORD_NAME ($$nom); no toco nada"
+            elif [ "$$dns" != "$$ip" ]; then
+              echo "ddns: $$CF_RECORD_NAME $$dns -> $$ip"
+              curl -fsS -m 15 -X PATCH -H "Authorization: Bearer $$CF_DDNS_TOKEN" -H 'content-type: application/json' \
+                -d "{\"content\":\"$$ip\"}" "$$U" | grep -q '"success":true' && echo "ddns: actualizado" || echo "ddns: ERROR al actualizar"
+            else echo "ddns: sin cambio ($$ip)"; fi
+          else echo "ddns: no pude leer la IP pública ($$ip)"; fi
+          sleep 300
+        done
+    restart: unless-stopped

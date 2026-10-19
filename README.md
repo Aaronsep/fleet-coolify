@@ -192,4 +192,7 @@ Recurso **aparte** en Coolify (`rustdesk`, mismo servidor y proyecto que Fleet),
 - **Desde fuera de la oficina** el túnel de Cloudflare no sirve (TCP/UDP crudos): hace falta reenviar en el router
   21115-21117/tcp y 21116/udp a 10.30.1.250 y un registro DNS **sin proxy**.
 - Log de hbbs/hbbr: `GET /api/v1/applications/<uuid>/logs?service_name=hbbs` (la imagen es `scratch`: sin shell).
+- **DDNS** (servicio `ddns`): cada 5 min compara la IP pública con el A `rustdesk.renopartes.com` (DNS only, sin proxy) y
+  actualiza SOLO ese registro, por su id. Usa `CF_DDNS_TOKEN`: token de Cloudflare «rustdesk-ddns», solo DNS Write en
+  renopartes.com (copia en el Llavero de la Mac, «ARES Cloudflare rustdesk-ddns»). Nunca la Global Key.
 - Clientes Windows: script `linea-base-4-acceso.ps1` (Backoffice `soporte/flota-windows/`).
