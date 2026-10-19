@@ -176,3 +176,20 @@ propósito: con `:latest` un redeploy cualquiera podría meter una migración de
    terminó por **healthcheck** (`test -f /tmp/done`), con `condition: service_healthy`.
 2. **Upstream monta `./certs/fleet.{crt,key}` siempre**, incluso con `FLEET_SERVER_TLS=false`.
    Si esos archivos no existen en el repo el contenedor no arranca. Aquí no se montan.
+
+## RustDesk propio (hbbs + hbbr), `rustdesk/docker-compose.yml`
+
+Recurso **aparte** en Coolify (`rustdesk`, mismo servidor y proyecto que Fleet), construido desde este repo con
+`docker_compose_location: /rustdesk/docker-compose.yml`. Un redeploy de Fleet no lo toca. Imagen oficial
+`rustdesk/rustdesk-server:1.1.16` (pinneada), `network_mode: host`, puertos 21115-21119 en el host.
+
+- **Llave**: vive en el volumen `data` (`/root/id_ed25519`). El init la escribe desde la variable `RUSTDESK_SK` sólo
+  si el volumen está vacío; la copia está en `~/.ares-secretos/rustdesk/` de la Mac. **Nunca se sube aquí.** La
+  pública va en la opción `key` de cada cliente (la ve el log del init: `publica: …`). Si se perdiera, los clientes
+  rechazan el servidor: hay que reponer la misma llave, no generar otra.
+- Variables (Coolify): `RUSTDESK_SK` (obligatoria la primera vez), `RUSTDESK_RELAY` (lo que hbbs anuncia como relay;
+  hoy `10.30.1.250`, después el nombre público) y `RUSTDESK_LAN_MASK` (`10.30.1.0/24`).
+- **Desde fuera de la oficina** el túnel de Cloudflare no sirve (TCP/UDP crudos): hace falta reenviar en el router
+  21115-21117/tcp y 21116/udp a 10.30.1.250 y un registro DNS **sin proxy**.
+- Log de hbbs/hbbr: `GET /api/v1/applications/<uuid>/logs?service_name=hbbs` (la imagen es `scratch`: sin shell).
+- Clientes Windows: script `linea-base-4-acceso.ps1` (Backoffice `soporte/flota-windows/`).

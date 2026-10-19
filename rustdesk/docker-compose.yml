@@ -1,0 +1,74 @@
+# RustDesk propio (hbbs + hbbr) — Reno Partes, mismo servidor de Coolify que Fleet (srv-coolify, 10.30.1.250).
+# Recurso aparte en Coolify («rustdesk»): un redeploy de Fleet no lo toca y viceversa.
+#
+# Puertos (en el host, network_mode: host):
+#   hbbs: 21115/tcp (prueba de NAT), 21116/tcp+udp (registro y ID), 21118/tcp (websocket, cliente web)
+#   hbbr: 21117/tcp (relay), 21119/tcp (websocket del relay)
+# ⚠️ El túnel de Cloudflare NO sirve para RustDesk (TCP/UDP crudos). Desde fuera de la oficina hace falta
+# reenviar 21115-21117/tcp y 21116/udp del router a 10.30.1.250 y un registro DNS sin proxy (nube gris).
+#
+# Por qué network_mode: host: hbbs necesita ver la IP real de cada cliente para el hole punching y para
+# --mask (si los dos lados están en la LAN les da su IP local y conectan directo). Publicando puertos de
+# Docker, una conexión TCP puede llegar con la IP del puente y el punch falla.
+#
+# La llave: hbbs y hbbr leen /root/id_ed25519 del volumen `data`. Si el volumen está vacío, rustdesk-init la
+# escribe desde RUSTDESK_SK (base64 de los 64 bytes de libsodium: semilla + pública). La copia vive en
+# ~/.ares-secretos/rustdesk/ de la Mac. Sin llave en el volumen y sin RUSTDESK_SK el init NO queda sano y
+# hbbs no arranca: así nunca se genera una llave nueva en silencio (los clientes la rechazarían).
+# Los clientes llevan la pública (id_ed25519.pub) en la opción `key`. hbbs exige la llave por omisión;
+# a hbbr se le pide con `-k _`.
+#
+# La imagen oficial es FROM scratch (sin shell, sin healthcheck): por eso el init es busybox.
+
+volumes:
+  data:
+
+services:
+  rustdesk-init:
+    image: busybox:stable
+    environment:
+      RUSTDESK_SK: ${RUSTDESK_SK:-}
+    volumes:
+      - data:/root
+    command:
+      - sh
+      - -c
+      - |
+        umask 077; cd /root
+        if [ ! -s id_ed25519 ]; then
+          [ -n "$$RUSTDESK_SK" ] || { echo "falta la llave: ni id_ed25519 ni RUSTDESK_SK"; sleep infinity; }
+          printf %s "$$RUSTDESK_SK" > id_ed25519
+          printf %s "$$RUSTDESK_SK" | base64 -d | tail -c 32 | base64 > id_ed25519.pub
+          echo "llave escrita desde RUSTDESK_SK"
+        fi
+        echo "publica: $$(cat id_ed25519.pub)"
+        touch /tmp/done; exec sleep infinity
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/done"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  hbbs:
+    image: rustdesk/rustdesk-server:1.1.16
+    network_mode: host
+    command: ["hbbs", "-r", "${RUSTDESK_RELAY:-10.30.1.250}:21117", "--mask", "${RUSTDESK_LAN_MASK:-10.30.1.0/24}"]
+    volumes:
+      - data:/root
+    depends_on:
+      rustdesk-init:
+        condition: service_healthy
+      hbbr:
+        condition: service_started
+    restart: unless-stopped
+
+  hbbr:
+    image: rustdesk/rustdesk-server:1.1.16
+    network_mode: host
+    command: ["hbbr", "-k", "_"]
+    volumes:
+      - data:/root
+    depends_on:
+      rustdesk-init:
+        condition: service_healthy
+    restart: unless-stopped
